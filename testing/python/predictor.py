@@ -43,19 +43,45 @@ class OpenPosePredictor(object):
                        [23,24], [25,26], [27,28], [29,30], [47,48], [49,50], [53,54], [51,52], \
                        [55,56], [37,38], [45,46]]
 
-    def getPose(self, input_path):
+    def getKeypoints(self, input_path):
+        """
+        Get the keypoint detections for an input image
+
+        ============
+        Body Part Indices
+        0 - Nose
+        1 - Neck
+        2 - Right Shoulder
+        3 - Right Elbow
+        4 - Right Hand
+        5 - Left Shoulder
+        6 - Left Elbow
+        7 - Left Hand
+        8 - Right Hip
+        9 - Right Knee
+        10 - Right Ankle
+        11 - Left Hip
+        12 - Left Knee
+        13 - Left Ankle
+        14 - Right Eye
+        15 - Left Eye
+        16 - Right Ear
+        17 - Left Ear
+        """
         ## Get the input image
         input_img = cv.imread(input_path)
         ## Multipliers 
         multipliers = [x * self.model['boxsize'] / input_img.shape[0] for x in self.param['scale_search']]
 
         ## Confidence Map and PAF
-        heatmap_agg, paf_agg = getSL(img, multipliers)
+        heatmap_agg, paf_agg = self.getSL(input_img, multipliers)
 
         ## Use NMS to get confidence map peaks
-        num_peaks, peaks = nonMaximalSurpression(heatmap_agg)
+        num_peaks, peaks = self.nonMaximalSurpression(heatmap_agg)
 
-    def getSL(img, multipliers):
+        return peaks
+
+    def getSL(self, img, multipliers):
         ## Average confidence map and PAF
         heatmap_avg = np.zeros((img.shape[0], img.shape[1], 19))
         paf_avg = np.zeros((img.shape[0], img.shape[1], 38))
@@ -63,24 +89,21 @@ class OpenPosePredictor(object):
         for m in range(len(multipliers)):
             scale = multipliers[m]
             imageToTest = cv.resize(img, (0,0), fx=scale, fy=scale, interpolation=cv.INTER_CUBIC)
-            imageToTest_padded, pad = util.padRightDownCorner(imageToTest, model['stride'], model['padValue'])
-            
-            axarr[m].imshow(imageToTest_padded[:,:,[2,1,0]])
-            axarr[m].set_title('Input image: scale %d' % m)
+            imageToTest_padded, pad = util.padRightDownCorner(imageToTest, self.model['stride'], self.model['padValue'])
 
-            net.blobs['data'].reshape(*(1, 3, imageToTest_padded.shape[0], imageToTest_padded.shape[1]))
-            net.blobs['data'].data[...] = np.transpose(np.float32(imageToTest_padded[:,:,:,np.newaxis]), (3,2,0,1))/256 - 0.5;
+            self.net.blobs['data'].reshape(*(1, 3, imageToTest_padded.shape[0], imageToTest_padded.shape[1]))
+            self.net.blobs['data'].data[...] = np.transpose(np.float32(imageToTest_padded[:,:,:,np.newaxis]), (3,2,0,1))/256 - 0.5;
             start_time = time.time()
-            output_blobs = net.forward()
+            output_blobs = self.net.forward()
 
             # extract outputs, resize, and remove padding
-            heatmap = np.transpose(np.squeeze(net.blobs[output_blobs.keys()[1]].data), (1,2,0)) # output 1 is heatmaps
-            heatmap = cv.resize(heatmap, (0,0), fx=model['stride'], fy=model['stride'], interpolation=cv.INTER_CUBIC)
+            heatmap = np.transpose(np.squeeze(self.net.blobs[output_blobs.keys()[1]].data), (1,2,0)) # output 1 is heatmaps
+            heatmap = cv.resize(heatmap, (0,0), fx=self.model['stride'], fy=self.model['stride'], interpolation=cv.INTER_CUBIC)
             heatmap = heatmap[:imageToTest_padded.shape[0]-pad[2], :imageToTest_padded.shape[1]-pad[3], :]
             heatmap = cv.resize(heatmap, (img.shape[1], img.shape[0]), interpolation=cv.INTER_CUBIC)
             
-            paf = np.transpose(np.squeeze(net.blobs[output_blobs.keys()[0]].data), (1,2,0)) # output 0 is PAFs
-            paf = cv.resize(paf, (0,0), fx=model['stride'], fy=model['stride'], interpolation=cv.INTER_CUBIC)
+            paf = np.transpose(np.squeeze(self.net.blobs[output_blobs.keys()[0]].data), (1,2,0)) # output 0 is PAFs
+            paf = cv.resize(paf, (0,0), fx=self.model['stride'], fy=self.model['stride'], interpolation=cv.INTER_CUBIC)
             paf = paf[:imageToTest_padded.shape[0]-pad[2], :imageToTest_padded.shape[1]-pad[3], :]
             paf = cv.resize(paf, (img.shape[1], img.shape[0]), interpolation=cv.INTER_CUBIC)
 
@@ -90,7 +113,15 @@ class OpenPosePredictor(object):
 
         return heatmap_avg, paf_avg
 
-    def nonMaximalSurpression(heatmap)
+    def nonMaximalSurpression(self, heatmap):
+        """
+        Performs non maximal supression on the heat map for each body part to extract key points.
+        
+        ===============
+        Output:
+        peak_counter -> total number of keypoints in input image
+        all_peaks -> all_peaks[i] gives list of (x, y, score, id) for each keypoint
+        """
         all_peaks = []
         peak_counter = 0
 
