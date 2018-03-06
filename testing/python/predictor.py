@@ -14,6 +14,43 @@ import os.path
 base_path = os.path.dirname(os.path.abspath(__file__))
 default_config = os.path.join(base_path, 'config')
 
+class PoseModel(object):
+    """
+    Stores the keypoints of a detected human pose as a list of (x, y) coordinates.
+
+    The indices corresponding to each body part are as follows:
+    0 - Nose
+    1 - Neck
+    2 - Right Shoulder
+    3 - Right Elbow
+    4 - Right Hand
+    5 - Left Shoulder
+    6 - Left Elbow
+    7 - Left Hand
+    8 - Right Hip
+    9 - Right Knee
+    10 - Right Ankle
+    11 - Left Hip
+    12 - Left Knee
+    13 - Left Ankle
+    14 - Right Eye
+    15 - Left Eye
+    16 - Right Ear
+    17 - Left Ear
+
+    """
+    def __init__(self, coordinates=None):
+        if coordinates is None:
+            self.keypoints = np.repeat(np.array([np.nan, np.nan], ndmin=2), 18, axis=0)
+        else:
+            self.keypoints = coordinates
+
+    def setPart(self, part_type, coordinates):
+        self.keypoints[part_type][0] = coordinates[0]
+        self.keypoints[part_type][1] = coordinates[1]
+
+    def getPart(self, part_type):
+        return self.keypoints[part_type][0], self.keypoints[part_type][1]
 
 class OpenPosePredictor(object):
     """
@@ -43,43 +80,21 @@ class OpenPosePredictor(object):
                        [23,24], [25,26], [27,28], [29,30], [47,48], [49,50], [53,54], [51,52], \
                        [55,56], [37,38], [45,46]]
 
-    def getKeypoints(self, input_path):
-        """
-        Get the keypoint detections for an input image
-
-        ============
-        Body Part Indices
-        0 - Nose
-        1 - Neck
-        2 - Right Shoulder
-        3 - Right Elbow
-        4 - Right Hand
-        5 - Left Shoulder
-        6 - Left Elbow
-        7 - Left Hand
-        8 - Right Hip
-        9 - Right Knee
-        10 - Right Ankle
-        11 - Left Hip
-        12 - Left Knee
-        13 - Left Ankle
-        14 - Right Eye
-        15 - Left Eye
-        16 - Right Ear
-        17 - Left Ear
-        """
+    def getPoseModels(self, input_path):
         ## Get the input image
-        input_img = cv.imread(input_path)
-        ## Multipliers 
-        multipliers = [x * self.model['boxsize'] / input_img.shape[0] for x in self.param['scale_search']]
+        self.input_img = cv.imread(input_path)
+        ## Multipliers for scale search
+        multipliers = [x * self.model['boxsize'] / self.input_img.shape[0] for x in self.param['scale_search']]
 
-        ## Confidence Map and PAF
-        heatmap_agg, paf_agg = self.getSL(input_img, multipliers)
+        ## Get Body Part Confidence Maps and PAFs
+        self.heatmap_agg, self.paf_agg = self.getSL(self.input_img, multipliers)
 
-        ## Use NMS to get confidence map peaks
-        num_peaks, peaks = self.nonMaximalSurpression(heatmap_agg)
+        ## Get body part locations
+        num_keypoints, self.keypoints = self.getKeypoints(self.heatmap_agg)
 
-        return peaks
+        ## Create pose models using the detected keypoints
+        self.pose_models = self.makeConnections(self.keypoints, self.paf_agg)
+        return self.pose_models
 
     def getSL(self, img, multipliers):
         ## Average confidence map and PAF
@@ -113,14 +128,20 @@ class OpenPosePredictor(object):
 
         return heatmap_avg, paf_avg
 
-    def nonMaximalSurpression(self, heatmap):
+    def getKeypoints(self, heatmap):
         """
-        Performs non maximal supression on the heat map for each body part to extract key points.
-        
-        ===============
-        Output:
-        peak_counter -> total number of keypoints in input image
-        all_peaks -> all_peaks[i] gives list of (x, y, score, id) for each keypoint
+        Use non maximal surpression to extract body part locations from confidence maps.         Parameters
+        ----------
+        heatmap: matrix
+            A (N x M x 17) matrix containing confidence values for each body part at each pixel location, where N x M is
+            the size of the input image
+
+        Output
+        ------
+        num_peaks: int
+            The total number of peaks detected
+        all_peaks: array of tuples
+            all_peaks[i] gives list of (x, y, score, id) for body part type i
         """
         all_peaks = []
         peak_counter = 0
@@ -150,3 +171,116 @@ class OpenPosePredictor(object):
             peak_counter += len(peaks)
 
         return peak_counter, all_peaks
+
+    def makeConnections(self, all_peaks, paf, mid_num=10):
+        pose_model_of = dict()
+        pose_models = []
+
+        ## For each limb type
+        for k in range(len(self.mapIdx)):
+            ## Get the PAFs associated with the limb type
+            score_mid = paf[:,:,[x-19 for x in self.mapIdx[k]]]
+            
+            ## Get all relevant detected body parts
+            A_type = self.limbSeq[k][0]-1
+            B_type = self.limbSeq[k][1]-1
+            candA = all_peaks[A_type]
+            candB = all_peaks[B_type]
+            nA = len(candA)
+            nB = len(candB)
+            
+            ## List of B that have already been matched
+            if(nA != 0 and nB != 0):
+                connection_candidates = []
+                for i in range(nA):
+                    for j in range(nB):
+                        ## Determine connection score
+                        vec = np.subtract(candB[j][:2], candA[i][:2])
+                        norm = math.sqrt(vec[0]*vec[0] + vec[1]*vec[1])
+                        vec = np.divide(vec, norm)
+                        
+                        startend = zip(np.linspace(candA[i][0], candB[j][0], num=mid_num), \
+                                       np.linspace(candA[i][1], candB[j][1], num=mid_num))
+                        
+                        vec_x = np.array([score_mid[int(round(startend[I][1])), int(round(startend[I][0])), 0] \
+                                          for I in range(len(startend))])
+                        vec_y = np.array([score_mid[int(round(startend[I][1])), int(round(startend[I][0])), 1] \
+                                          for I in range(len(startend))])
+                        score_midpts = np.multiply(vec_x, vec[0]) + np.multiply(vec_y, vec[1])
+                        
+                        ## Check against thresholds
+                        score_with_dist_prior = sum(score_midpts)/len(score_midpts) + min(0.5*self.input_img.shape[0]/norm-1, 0)
+                        ## 80% of the path must have agreeable PAF values
+                        criterion1 = len(np.nonzero(score_midpts > self.param['thre2'])[0]) > 0.8 * len(score_midpts)
+                        ## The average agreement must be above 0
+                        criterion2 = score_with_dist_prior > 0
+                        if criterion1 and criterion2:
+                            connection_candidates.append([i, j, score_with_dist_prior])
+
+                ## Sort candidates by score
+                connection_candidates = sorted(connection_candidates, key=lambda x: x[2], reverse=True)
+
+                ## List of matched body parts
+                matched_As = np.zeros(nA, dtype=bool)
+                matched_Bs = np.zeros(nB, dtype=bool)
+                
+                num_matches = 0
+                for i, j, score in connection_candidates:
+                    if matched_As[i] or matched_Bs[j]:
+                        continue
+                    ## Part IDs of the parts being connected
+                    A_id = candA[i][3]
+                    B_id = candB[j][3]
+                    ## Add B to the pose model associated with the "from" body part or create a new one
+                    if A_id not in pose_model_of:
+                        pose_model = PoseModel()
+                        pose_models.append(pose_model)
+                        pose_model_of[A_id] = pose_model
+                        pose_model.setPart(A_type, candA[i][:2])
+                    else:
+                        pose_model = pose_model_of[A_id]
+
+                    pose_model.setPart(B_type, candB[j][:2])
+                    pose_model_of[B_id] = pose_model
+
+                    num_matches = num_matches + 1
+                    matched_As[i] = True
+                    matched_Bs[j] = True
+
+                print("Limb {}: {} matches made".format(k, num_matches))
+
+        return pose_models
+
+    def drawPoseModels(self, modelnums=None):
+        colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
+                  [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], \
+                  [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+
+        canvas = self.input_img.copy()
+
+        ## Select the models to
+        if modelnums is None:
+            queue = np.arange(len(self.pose_models))
+        else:
+            queue = np.array(modelnums)
+
+        for index in queue:
+            pose_model = self.pose_models[index]
+            ## Draw body parts
+            for part_type in range(18):
+                part_x, part_y = pose_model.getPart(part_type)
+                if not np.isnan(part_x):
+                    cv.circle(canvas, (int(part_x), int(part_y)), 4, colors[part_type], thickness=-1)
+
+            ## Draw limbs
+            for limb_type in range(17):
+                A_type = self.limbSeq[limb_type][0]-1
+                B_type = self.limbSeq[limb_type][1]-1
+                A_x, A_y = pose_model.getPart(A_type)
+                B_x, B_y = pose_model.getPart(B_type)
+                if not np.isnan(A_x) and not np.isnan(B_x):
+                    cur_canvas = canvas.copy()
+                    cv.line(cur_canvas, (int(A_x), int(A_y)), (int(B_x), int(B_y)), colors[limb_type], thickness=4)
+                    canvas = cv.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
+
+        return canvas
