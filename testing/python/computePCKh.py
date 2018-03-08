@@ -39,7 +39,7 @@ def detectPoseModels(img_num):
 if __name__ == '__main__':
     ## Load in current record of PCKh scores
     if os.path.isfile('pckhrecord.csv'):
-        pckh_record = pd.read_csv('pckhrecord.csv')
+        pckh_record = pd.read_csv('pckhrecord.csv', index_col=0)
     else:
         pckh_record = pd.DataFrame(columns=['num_correct', 'num_total'])
 
@@ -69,14 +69,14 @@ if __name__ == '__main__':
         max_num_total = np.nan
         for pose_model_dt in pose_models_dt:
             num_corr, num_total = predictor.computePCKh(pose_model_gt, pose_model_dt)
-            if num_total != 0 and float(num_corr)/float(num_total) > max_score:
+            if num_total != 0 and num_corr > max_num_corr:
                 max_score = float(num_corr)/float(num_total)
                 max_num_corr = num_corr
                 max_num_total = num_total
         
         ## Record the PCKh score
-        print("\tCorrect:{} \tTotal:{}".format(num_corr, num_total))
-        pckh_record.loc[img_num] = {'num_correct': num_corr, 'num_total': num_total}
+        print("\tCorrect:{} \tTotal:{}".format(max_num_corr, max_num_total))
+        pckh_record.loc[img_num] = {'num_correct': max_num_corr, 'num_total': max_num_total}
 
         num_processed += 1
 
