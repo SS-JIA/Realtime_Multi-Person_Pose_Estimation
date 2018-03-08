@@ -242,13 +242,15 @@ class OpenPosePredictor(object):
                         
                         ## Check against thresholds
                         score_with_dist_prior = sum(score_midpts)/len(score_midpts) + min(0.5*self.input_img.shape[0]/norm-1, 0)
+                        if candA[i][3] in pose_model_of:
+                            score_with_dist_prior = score_with_dist_prior * self.param['exist_boost']
                         ## 80% of the path must have agreeable PAF values
                         criterion1 = len(np.nonzero(score_midpts > self.param['thre2'])[0]) > 0.8 * len(score_midpts)
                         ## The average agreement must be above 0
                         criterion2 = score_with_dist_prior > 0
                         if criterion1 and criterion2:
                             connection_candidates.append([i, j, score_with_dist_prior])
-
+                
                 ## Sort candidates by score
                 connection_candidates = sorted(connection_candidates, key=lambda x: x[2], reverse=True)
 

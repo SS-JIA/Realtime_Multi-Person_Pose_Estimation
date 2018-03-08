@@ -29,6 +29,7 @@ def config_reader(path):
     param['min_num'] = int(param['min_num'])
     param['crop_ratio'] = float(param['crop_ratio'])
     param['bbox_ratio'] = float(param['bbox_ratio'])
+    param['exist_boost'] = float(param['exist_boost'])
     param['GPUdeviceNumber'] = int(param['GPUdeviceNumber'])
 
     return param, model

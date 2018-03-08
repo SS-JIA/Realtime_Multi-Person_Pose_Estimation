@@ -21,6 +21,7 @@ min_num = 4
 mid_num = 10
 crop_ratio = 2.5
 bbox_ratio = 0.25
+exist_boost = 1.1
 
 [models]
 ## don't edit this part
