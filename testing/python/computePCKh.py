@@ -38,7 +38,7 @@ def detectPoseModels(img_num):
 
 if __name__ == '__main__':
     ## Load in current record of PCKh scores
-    if os.path.isfile('pckhrecord.h5'):
+    if os.path.isfile('pckhrecord.csv'):
         pckh_record = pd.read_csv('pckhrecord.csv')
     else:
         pckh_record = pd.DataFrame(columns=['num_correct', 'num_total'])
@@ -76,9 +76,9 @@ if __name__ == '__main__':
         
         ## Record the PCKh score
         print("\tCorrect:{} \tTotal:{}".format(num_corr, num_total))
-        pckh_record.loc[img_num] = {'num_corect': num_corr, 'num_total': num_total}
+        pckh_record.loc[img_num] = {'num_correct': num_corr, 'num_total': num_total}
 
         num_processed += 1
 
-        if num_processed%15 == 0:
+        if num_processed%5 == 0:
             pckh_record.to_csv('pckhrecord.csv')
