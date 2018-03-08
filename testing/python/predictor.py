@@ -46,13 +46,14 @@ class PoseModel(object):
     15 - Left Eye
     16 - Right Ear
     17 - Left Ear
+    18 - Top of Head
 
     """
     def __init__(self, coordinates=None):
         if coordinates is None:
-            self.keypoints = np.repeat(np.array([np.nan, np.nan], ndmin=2), 18, axis=0)
-        elif not isinstance(coordinates, np.ndarray) and coordinates.shape != (18, 2):
-            raise Exception("Please input a 18x2 array")
+            self.keypoints = np.repeat(np.array([np.nan, np.nan], ndmin=2), 19, axis=0)
+        elif not isinstance(coordinates, np.ndarray) and coordinates.shape != (19, 2):
+            raise Exception("Please input a 19x2 array")
         else:
             self.keypoints = coordinates
 
