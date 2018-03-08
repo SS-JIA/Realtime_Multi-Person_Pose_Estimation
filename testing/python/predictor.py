@@ -14,6 +14,15 @@ import os.path
 base_path = os.path.dirname(os.path.abspath(__file__))
 default_config = os.path.join(base_path, 'config')
 
+
+## Limb Definitions
+limbSeq = [[2,3], [2,6], [3,4], [4,5], [6,7], [7,8], [2,9], [9,10], \
+           [10,11], [2,12], [12,13], [13,14], [2,1], [1,15], [15,17], \
+           [1,16], [16,18], [3,17], [6,18]]
+mapIdx = [[31,32], [39,40], [33,34], [35,36], [41,42], [43,44], [19,20], [21,22], \
+          [23,24], [25,26], [27,28], [29,30], [47,48], [49,50], [53,54], [51,52], \
+          [55,56], [37,38], [45,46]]
+
 class PoseModel(object):
     """
     Stores the keypoints of a detected human pose as a list of (x, y) coordinates.
@@ -42,6 +51,8 @@ class PoseModel(object):
     def __init__(self, coordinates=None):
         if coordinates is None:
             self.keypoints = np.repeat(np.array([np.nan, np.nan], ndmin=2), 18, axis=0)
+        elif not isinstance(coordinates, np.ndarray) and coordinates.shape != (18, 2):
+            raise Exception("Please input a 18x2 array")
         else:
             self.keypoints = coordinates
 
@@ -51,6 +62,35 @@ class PoseModel(object):
 
     def getPart(self, part_type):
         return self.keypoints[part_type][0], self.keypoints[part_type][1]
+
+    def overLay(self, image, colors=None):
+        canvas = image.copy()
+        ## Set colors
+        if colors is None:
+            colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
+                      [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], \
+                      [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+        elif len(colors) != 18:
+            raise Exception("Not enough colors defined")
+
+        ## Draw body parts
+        for part_type in range(18):
+            part_x, part_y = self.getPart(part_type)
+            if not np.isnan(part_x):
+                cv.circle(canvas, (int(part_x), int(part_y)), 4, colors[part_type], thickness=-1)
+
+        ## Draw limbs
+        for limb_type in range(17):
+            A_type = limbSeq[limb_type][0]-1
+            B_type = limbSeq[limb_type][1]-1
+            A_x, A_y = self.getPart(A_type)
+            B_x, B_y = self.getPart(B_type)
+            if not np.isnan(A_x) and not np.isnan(B_x):
+                cur_canvas = canvas.copy()
+                cv.line(cur_canvas, (int(A_x), int(A_y)), (int(B_x), int(B_y)), colors[limb_type], thickness=4)
+                canvas = cv.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
+
+        return canvas
 
 class OpenPosePredictor(object):
     """
@@ -71,14 +111,6 @@ class OpenPosePredictor(object):
             caffe.set_mode_cpu()
 
         self.net = caffe.Net(self.model['deployFile'], self.model['caffemodel'], caffe.TEST)
-
-        ## Limb Definitions
-        self.limbSeq = [[2,3], [2,6], [3,4], [4,5], [6,7], [7,8], [2,9], [9,10], \
-                        [10,11], [2,12], [12,13], [13,14], [2,1], [1,15], [15,17], \
-                        [1,16], [16,18], [3,17], [6,18]]
-        self.mapIdx = [[31,32], [39,40], [33,34], [35,36], [41,42], [43,44], [19,20], [21,22], \
-                       [23,24], [25,26], [27,28], [29,30], [47,48], [49,50], [53,54], [51,52], \
-                       [55,56], [37,38], [45,46]]
 
     def getPoseModels(self, input_path):
         ## Get the input image
@@ -177,13 +209,13 @@ class OpenPosePredictor(object):
         pose_models = []
 
         ## For each limb type
-        for k in range(len(self.mapIdx)):
+        for k in range(len(mapIdx)):
             ## Get the PAFs associated with the limb type
-            score_mid = paf[:,:,[x-19 for x in self.mapIdx[k]]]
+            score_mid = paf[:,:,[x-19 for x in mapIdx[k]]]
             
             ## Get all relevant detected body parts
-            A_type = self.limbSeq[k][0]-1
-            B_type = self.limbSeq[k][1]-1
+            A_type = limbSeq[k][0]-1
+            B_type = limbSeq[k][1]-1
             candA = all_peaks[A_type]
             candB = all_peaks[B_type]
             nA = len(candA)
@@ -247,8 +279,6 @@ class OpenPosePredictor(object):
                     matched_As[i] = True
                     matched_Bs[j] = True
 
-                print("Limb {}: {} matches made".format(k, num_matches))
-
         return pose_models
 
     def drawPoseModels(self, modelnums=None):
@@ -266,21 +296,6 @@ class OpenPosePredictor(object):
 
         for index in queue:
             pose_model = self.pose_models[index]
-            ## Draw body parts
-            for part_type in range(18):
-                part_x, part_y = pose_model.getPart(part_type)
-                if not np.isnan(part_x):
-                    cv.circle(canvas, (int(part_x), int(part_y)), 4, colors[part_type], thickness=-1)
-
-            ## Draw limbs
-            for limb_type in range(17):
-                A_type = self.limbSeq[limb_type][0]-1
-                B_type = self.limbSeq[limb_type][1]-1
-                A_x, A_y = pose_model.getPart(A_type)
-                B_x, B_y = pose_model.getPart(B_type)
-                if not np.isnan(A_x) and not np.isnan(B_x):
-                    cur_canvas = canvas.copy()
-                    cv.line(cur_canvas, (int(A_x), int(A_y)), (int(B_x), int(B_y)), colors[limb_type], thickness=4)
-                    canvas = cv.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
+            canvas = pose_model.overLay(canvas)
 
         return canvas
