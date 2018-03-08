@@ -23,6 +23,34 @@ mapIdx = [[31,32], [39,40], [33,34], [35,36], [41,42], [43,44], [19,20], [21,22]
           [23,24], [25,26], [27,28], [29,30], [47,48], [49,50], [53,54], [51,52], \
           [55,56], [37,38], [45,46]]
 
+def computeDistance(modelA, modelB):
+    total_dist = 0
+
+    for i in range(len(modelA.coordinates)):
+        partA = np.array(modelA.getPart(i))
+        partB = np.array(modelB.getPart(i))
+        if not np.isnan(partA[0]) and not np.isnan(partB[0]):
+            total_dist += np.linalg.norm(partB - partA)
+
+    return total_dist
+
+def computePCKh(ground_truth_model, detected_model):
+    head_length = np.linalg.norm(np.array(ground_truth_model.getPart(18)) - np.array(ground_truth_model.getPart(1)))
+    
+    num_corr = 0
+    num_total = 0
+    for i in range(len(ground_truth_model.keypoints)):
+        partA = np.array(ground_truth_model.getPart(i))
+        partB = np.array(detected_model.getPart(i))
+        if not np.isnan(partA[0]) and not np.isnan(partB[0]):
+            num_total += 1
+            dist = np.linalg.norm(partB - partA)
+            if dist < 0.5 * head_length:
+                num_corr += 1
+
+    return num_corr, num_total
+
+
 class PoseModel(object):
     """
     Stores the keypoints of a detected human pose as a list of (x, y) coordinates.
