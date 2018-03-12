@@ -5,6 +5,7 @@ import h5py
 import os
 import os.path
 import argparse
+import copy
 
 os.environ['GLOG_minloglevel'] = '3' 
 
@@ -41,7 +42,10 @@ if __name__ == '__main__':
     if os.path.isfile('pckhrecord.csv'):
         pckh_record = pd.read_csv('pckhrecord.csv', index_col=0)
     else:
-        pckh_record = pd.DataFrame(columns=['num_correct', 'num_total'])
+        columns = copy.deepcopy(predictor.part_names)
+        columns.append("found")
+        columns.append("correct")
+        pckh_record = pd.DataFrame(columns=columns)
 
     ## Determine where to start and end
     if len(pckh_record) == 0:
@@ -63,20 +67,27 @@ if __name__ == '__main__':
         pose_models_dt = detectPoseModels(img_num)
         print("\t{} poses detected!".format(len(pose_models_dt)))
 
-        ## Calculate PCKh between PoseModels
-        max_score = np.nan
-        max_num_corr = np.nan
-        max_num_total = np.nan
+        ## Compare ground truth model with all detected and choose best PCKh
+        keeper = None
         for pose_model_dt in pose_models_dt:
-            num_corr, num_total = predictor.computePCKh(pose_model_gt, pose_model_dt)
-            if num_total != 0 and (np.isnan(max_num_corr) or num_corr > max_num_corr):
-                max_score = float(num_corr)/float(num_total)
-                max_num_corr = num_corr
-                max_num_total = num_total
+            parts_found = predictor.computePCKh(pose_model_gt, pose_model_dt)
+
+            if keeper is None:
+                proceed = True
+            elif parts_found['correct'] > max_correct_keypoints:
+                proceed = True
+            elif parts_found['correct'] == max_correct_keypoints and parts_found['found'] > max_found_keypoints:
+                proceed = True
+
+            if proceed:
+                keeper = parts_found
+                max_correct_keypoints = parts_found['correct']
+                max_found_keypoints = parts_found['found']
         
         ## Record the PCKh score
-        print("\tCorrect:{} \tTotal:{}".format(max_num_corr, max_num_total))
-        pckh_record.loc[img_num] = {'num_correct': max_num_corr, 'num_total': max_num_total}
+        if keeper is not None:
+            print("\tCorrect:{} \tFound:{}".format(keeper['correct'], keeper['found']))
+            pckh_record.loc[img_num] = keeper
 
         num_processed += 1
 

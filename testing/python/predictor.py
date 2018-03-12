@@ -14,6 +14,28 @@ import os.path
 base_path = os.path.dirname(os.path.abspath(__file__))
 default_config = os.path.join(base_path, 'config')
 
+## Body Part Definitions
+part_names = [ \
+    "nose", \
+    "neck", \
+    "right_shoulder", \
+    "right_elbow", \
+    "right_hand", \
+    "left_shoulder", \
+    "left_elbow", \
+    "left_hand", \
+    "right_hip", \
+    "right_knee", \
+    "right_ankle", \
+    "left_hip", \
+    "left_knee", \
+    "left_ankle", \
+    "right_eye", \
+    "left_eye", \
+    "right_ear", \
+    "left_ear", \
+    "top_of_head", \
+]
 
 ## Limb Definitions
 limbSeq = [[2,3], [2,6], [3,4], [4,5], [6,7], [7,8], [2,9], [9,10], \
@@ -35,46 +57,38 @@ def computeDistance(modelA, modelB):
     return total_dist
 
 def computePCKh(ground_truth_model, detected_model):
+    ## Compute head segment length
     head_length = np.linalg.norm(np.array(ground_truth_model.getPart(18)) - np.array(ground_truth_model.getPart(1)))
     
     num_corr = 0
     num_total = 0
+    parts_found = dict()
+    ## For each body part type
     for i in range(len(ground_truth_model.keypoints)):
         partA = np.array(ground_truth_model.getPart(i))
         partB = np.array(detected_model.getPart(i))
+
+        parts_found[part_names[i]] = np.nan
+        ## Proceed only if the body part is detected
         if not np.isnan(partA[0]) and not np.isnan(partB[0]):
             num_total += 1
+            parts_found[part_names[i]] = 0
+
             dist = np.linalg.norm(partB - partA)
+            ## Detected keypoint is correct
             if dist < 0.5 * head_length:
                 num_corr += 1
+                parts_found[part_names[i]] = 1
+    
+    parts_found['correct'] = num_corr
+    parts_found['found'] = num_total
 
-    return num_corr, num_total
+    return parts_found
 
 
 class PoseModel(object):
     """
     Stores the keypoints of a detected human pose as a list of (x, y) coordinates.
-
-    The indices corresponding to each body part are as follows:
-    0 - Nose
-    1 - Neck
-    2 - Right Shoulder
-    3 - Right Elbow
-    4 - Right Hand
-    5 - Left Shoulder
-    6 - Left Elbow
-    7 - Left Hand
-    8 - Right Hip
-    9 - Right Knee
-    10 - Right Ankle
-    11 - Left Hip
-    12 - Left Knee
-    13 - Left Ankle
-    14 - Right Eye
-    15 - Left Eye
-    16 - Right Ear
-    17 - Left Ear
-    18 - Top of Head
 
     """
     def __init__(self, coordinates=None):
