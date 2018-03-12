@@ -4,3 +4,5 @@
 .ipynb_checkpoints/
 testing/sample_image/hockey1
 tags
+dataset/
+*.zip
