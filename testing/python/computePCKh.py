@@ -69,7 +69,7 @@ if __name__ == '__main__':
         max_num_total = np.nan
         for pose_model_dt in pose_models_dt:
             num_corr, num_total = predictor.computePCKh(pose_model_gt, pose_model_dt)
-            if num_total != 0 and num_corr > max_num_corr:
+            if num_total != 0 and (np.isnan(max_num_corr) or num_corr > max_num_corr):
                 max_score = float(num_corr)/float(num_total)
                 max_num_corr = num_corr
                 max_num_total = num_total
