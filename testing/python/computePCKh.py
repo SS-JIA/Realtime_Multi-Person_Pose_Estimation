@@ -72,6 +72,7 @@ if __name__ == '__main__':
         for pose_model_dt in pose_models_dt:
             parts_found = predictor.computePCKh(pose_model_gt, pose_model_dt)
 
+            proceed = False
             if keeper is None:
                 proceed = True
             elif parts_found['correct'] > max_correct_keypoints:
