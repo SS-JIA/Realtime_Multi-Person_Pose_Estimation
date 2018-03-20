@@ -6,3 +6,6 @@ testing/sample_image/hockey1
 tags
 dataset/
 *.zip
+*.mat
+*.csv
+*.ipynb
