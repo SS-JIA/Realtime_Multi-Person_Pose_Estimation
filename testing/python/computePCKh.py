@@ -37,6 +37,30 @@ def detectPoseModels(img_num):
 
     return pose_models_detected
 
+def processRecord(pckh_record):
+    pckh_record = pckh_record[182:]
+    results = dict()
+
+    ## Get percentages for each part type
+    for part_type in predictor.part_names:
+        part_results = pckh_record[part_type]
+        ## Filter out instances where the part was not detected
+        part_results = part_results[part_results.notnull()]
+
+        ## If part does not exist, record nothing
+        if len(part_results) == 0:
+            results[part_type] = np.nan
+        ## Otherwise record the percentage of detections that were correct
+        else:
+            results[part_type] = part_results.sum() / len(part_results)
+            print("{: >20}: {: <10}".format(part_type, round(results[part_type], 2)))
+
+    ## Record the overall percentage of detected parts that were correct
+    results['PCKh'] = pckh_record['correct'].sum() / pckh_record['found'].sum()
+    print("{: >20}: {: <10}".format("PCKh", round(results["PCKh"], 2)))
+
+    return results
+
 if __name__ == '__main__':
     ## Load in current record of PCKh scores
     if os.path.isfile('pckhrecord.csv'):
@@ -94,3 +118,7 @@ if __name__ == '__main__':
 
         if num_processed%5 == 0:
             pckh_record.to_csv('pckhrecord.csv')
+
+    pckh_record.to_csv('pckhrecord.csv')
+
+    processRecord(pckh_record)
