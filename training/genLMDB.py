@@ -4,8 +4,6 @@ import json
 import cv2
 import lmdb
 import sys, os
-# change your caffe path here
-sys.path.insert(0, os.path.join('/home/zhecao/caffe/', 'python/'))
 import caffe
 import os.path
 import struct
@@ -55,10 +53,10 @@ def writeLMDB(datasets, lmdb_path, validation):
 		if "MPI" in data[idx]['dataset']:
 			path_header = 'dataset/MPI/images/'
 		elif "COCO" in data[idx]['dataset']:
-			path_header = '/media/posenas4b/User/zhe/Convolutional-Pose-Machines/training/dataset/COCO/images/'
+			path_header = '/home/stephen/Projects/openpose-py/training/dataset/COCO/'
 
-		print os.path.join(path_header, data[idx]['img_paths'])
-		img = cv2.imread(os.path.join(path_header, data[idx]['img_paths']))
+		print os.path.join(path_header+'images', data[idx]['img_paths'])
+		img = cv2.imread(os.path.join(path_header+'images', data[idx]['img_paths']))
 		#print data[idx]['img_paths']
 		img_idx = data[idx]['img_paths'][-16:-3];
 		#print img_idx
@@ -75,6 +73,9 @@ def writeLMDB(datasets, lmdb_path, validation):
 			#print img_idx
 			mask_miss = cv2.imread('dataset/MPI/masks/mask_'+img_idx+'jpg', 0)
 			#mask_all = mask_miss
+
+		if mask_miss is None:
+			continue
 
 		height = img.shape[0]
 		width = img.shape[1]
@@ -192,4 +193,4 @@ def float2bytes(floats):
 
 if __name__ == "__main__":
 	#writeLMDB(['MPI'], '/home/zhecao/MPI_pose/lmdb', 1)
-	writeLMDB(['COCO'], '/home/zhecao/COCO_kpt/lmdb', 1)
+	writeLMDB(['COCO'], '/home/stephen/lmdb/', 1)

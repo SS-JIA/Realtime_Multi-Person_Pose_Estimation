@@ -1,10 +1,15 @@
+% Uses the segmentation data from annotation structure generated with 
+% getANNO.m to create mask images for each image
+%
+% Outputs mask images to data/COCO/mask2014
+
 addpath('dataset/COCO/coco/MatlabAPI/');
 addpath('../testing/util');
 
 mkdir('dataset/COCO/mask2014')
 vis = 0;
 
-for mode = 0:1
+for mode = 1:1
     
     if mode == 1 
         load('dataset/COCO/mat/coco_kpt.mat');
@@ -17,6 +22,7 @@ for mode = 0:1
     %%
     
     for i = 1:L
+        % Determine input and output paths
         if mode == 1
             img_paths = sprintf('images/train2014/COCO_train2014_%012d.jpg', coco_kpt(i).image_id);
             img_name1 = sprintf('dataset/COCO/mask2014/train2014_mask_all_%012d.png', coco_kpt(i).image_id);
@@ -27,6 +33,7 @@ for mode = 0:1
             img_name2 = sprintf('dataset/COCO/mask2014/val2014_mask_miss_%012d.png', coco_kpt(i).image_id);
         end
         
+        % Check if the mask image has already been created
         try
             display([num2str(i) '/ ' num2str(L)]);
             imread(img_name1);
@@ -36,9 +43,11 @@ for mode = 0:1
             display([num2str(i) '/ ' num2str(L)]);
             %joint_all(count).img_paths = RELEASE(i).image_id;
             [h,w,~] = size(imread(['dataset/COCO/', img_paths]));
+            % Initialize
             mask_all = false(h,w);
             mask_miss = false(h,w);
             flag = 0;
+            % For each person
             for p = 1:length(coco_kpt(i).annorect)
                 %if this person is annotated
                 try
