@@ -15,7 +15,7 @@ base_path = os.path.dirname(os.path.abspath(__file__))
 default_config = os.path.join(base_path, 'config')
 
 ## Body Part Definitions
-part_names = [ \
+coco_part_names = [ \
     "nose", \
     "neck", \
     "right_shoulder", \
@@ -91,13 +91,14 @@ class PoseModel(object):
     Stores the keypoints of a detected human pose as a list of (x, y) coordinates.
 
     """
-    def __init__(self, coordinates=None):
-        if coordinates is None:
-            self.keypoints = np.repeat(np.array([np.nan, np.nan], ndmin=2), 19, axis=0)
-        elif not isinstance(coordinates, np.ndarray) and coordinates.shape != (19, 2):
-            raise Exception("Please input a 19x2 array")
-        else:
-            self.keypoints = coordinates
+    def __init__(self, num_parts, limb_to, limb_from, part_names=None):
+        self.num_parts = num_parts
+        self.limb_to = limb_to
+        self.limb_from = limb_from
+        self.num_joints = len(limb_to)
+
+        self.keypoints = np.empty((num_parts, 2))
+        self.keypoints[:] = np.nan
 
     def setPart(self, part_type, coordinates):
         self.keypoints[part_type][0] = coordinates[0]
@@ -113,24 +114,22 @@ class PoseModel(object):
             colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
                       [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], \
                       [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
-        elif len(colors) != 18:
-            raise Exception("Not enough colors defined")
 
         ## Draw body parts
-        for part_type in range(18):
+        for part_type in range(self.num_parts):
             part_x, part_y = self.getPart(part_type)
             if not np.isnan(part_x):
                 cv.circle(canvas, (int(part_x), int(part_y)), 4, colors[part_type], thickness=-1)
 
         ## Draw limbs
-        for limb_type in range(17):
-            A_type = limbSeq[limb_type][0]-1
-            B_type = limbSeq[limb_type][1]-1
+        for limb_type in range(self.num_joints):
+            A_type = self.limb_from[limb_type]
+            B_type = self.limb_to[limb_type]
             A_x, A_y = self.getPart(A_type)
             B_x, B_y = self.getPart(B_type)
             if not np.isnan(A_x) and not np.isnan(B_x):
                 cur_canvas = canvas.copy()
-                cv.line(cur_canvas, (int(A_x), int(A_y)), (int(B_x), int(B_y)), colors[limb_type], thickness=4)
+                cv.line(cur_canvas, (int(A_x), int(A_y)), (int(B_x), int(B_y)), colors[limb_type%len(colors)], thickness=4)
                 canvas = cv.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
         return canvas
@@ -155,6 +154,14 @@ class OpenPosePredictor(object):
 
         self.net = caffe.Net(self.model['deployFile'], self.model['caffemodel'], caffe.TEST)
 
+        ## Pose Model Specs
+        self.num_keypoints = int(self.model['np'])
+        self.limb_from = [int(x) for x in self.model['limb_from']]
+        self.limb_to = [int(x) for x in self.model['limb_to']]
+        self.limb_order = [int(x) for x in self.model['limb_order']]
+        self.num_limbs = len(self.limb_from)
+
+
     def getPoseModels(self, input_path):
         ## Get the input image
         self.input_img = cv.imread(input_path)
@@ -173,8 +180,8 @@ class OpenPosePredictor(object):
 
     def getSL(self, img, multipliers):
         ## Average confidence map and PAF
-        heatmap_avg = np.zeros((img.shape[0], img.shape[1], 19))
-        paf_avg = np.zeros((img.shape[0], img.shape[1], 38))
+        heatmap_avg = np.zeros((img.shape[0], img.shape[1], self.num_keypoints))
+        paf_avg = np.zeros((img.shape[0], img.shape[1], 2*self.num_limbs))
 
         for m in range(len(multipliers)):
             scale = multipliers[m]
@@ -208,7 +215,7 @@ class OpenPosePredictor(object):
         Use non maximal surpression to extract body part locations from confidence maps.         Parameters
         ----------
         heatmap: matrix
-            A (N x M x 17) matrix containing confidence values for each body part at each pixel location, where N x M is
+            A (N x M x num_kepoints) matrix containing confidence values for each body part at each pixel location, where N x M is
             the size of the input image
 
         Output
@@ -221,7 +228,8 @@ class OpenPosePredictor(object):
         all_peaks = []
         peak_counter = 0
 
-        for part in range(19-1):
+        ## For each part
+        for part in range(self.num_keypoints):
             x_list = []
             y_list = []
             map_ori = heatmap[:,:,part]
@@ -252,13 +260,13 @@ class OpenPosePredictor(object):
         pose_models = []
 
         ## For each limb type
-        for k in range(len(mapIdx)):
+        for k in self.limb_order:
             ## Get the PAFs associated with the limb type
-            score_mid = paf[:,:,[x-19 for x in mapIdx[k]]]
+            score_mid = paf[:,:,[k*2, k*2 + 1]]
             
             ## Get all relevant detected body parts
-            A_type = limbSeq[k][0]-1
-            B_type = limbSeq[k][1]-1
+            A_type = self.limb_from[k]
+            B_type = self.limb_to[k]
             candA = all_peaks[A_type]
             candB = all_peaks[B_type]
             nA = len(candA)
@@ -310,7 +318,7 @@ class OpenPosePredictor(object):
                     B_id = candB[j][3]
                     ## Add B to the pose model associated with the "from" body part or create a new one
                     if A_id not in pose_model_of:
-                        pose_model = PoseModel()
+                        pose_model = PoseModel(self.num_keypoints, self.limb_to, self.limb_from)
                         pose_models.append(pose_model)
                         pose_model_of[A_id] = pose_model
                         pose_model.setPart(A_type, candA[i][:2])
