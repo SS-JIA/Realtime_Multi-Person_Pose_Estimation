@@ -152,9 +152,9 @@ def setLayers_twoBranches(data_source, batch_size, layername, kernel, stride, ou
                 #    lr_m = lr_sub
                 if layername[l+1] == 'L2' or layername[l+1] == 'L3':
                     if level == 0:
-                        outCH[l] = 38
+                        outCH[l] = 28
                     else:
-                        outCH[l] = 19
+                        outCH[l] = 16
 
                 n.tops[conv_name] = L.Convolution(n.tops[last_layer[level]], kernel_size=kernel[l],
                                                       num_output=outCH[l], pad=int(math.floor(kernel[l]/2)),
@@ -298,33 +298,27 @@ def setLayers_twoBranches(data_source, batch_size, layername, kernel, stride, ou
         return deploy_str + '\n' + 'layer {' + 'layer {'.join(str(n.to_proto()).split('layer {')[2:])
 
 
-def writePrototxts(dataFolder, sub_dir, batch_size, layername, kernel, stride, outCH, transform_param_in, base_lr, folder_name, label_name='label_1st', batchnorm=0, lr_mult_distro=[1,1,1], new=0):
+def writePrototxts(data_folder, sub_dir, batch_size, layername, kernel, stride, outCH, transform_param_in, base_lr, label_name='label_1st', batchnorm=0, lr_mult_distro=[1,1,1], new=0):
     # write the net prototxt files out
     if new == 6:
         print 'weight'
         with open('%s/pose_train_test.prototxt' % sub_dir, 'w') as f:
             print 'writing train_test prototxt'
-            str_to_write = setLayers_twoBranches(source, batch_size, layername, kernel, stride, outCH, label_name, transform_param_in, deploy=False, batchnorm=batchnorm, lr_mult_distro=lr_mult_distro)
+            str_to_write = setLayers_twoBranches(data_folder, batch_size, layername, kernel, stride, outCH, label_name, transform_param_in, deploy=False, batchnorm=batchnorm, lr_mult_distro=lr_mult_distro)
             f.write(str_to_write)
 
-        with open('%s/pose_deploy.prototxt' % sub_dir, 'w') as f:
-            print 'writing deploy prototxt'
-            str_to_write = str(setLayers_twoBranches('', 0, layername, kernel, stride, outCH, label_name, transform_param_in, deploy=True, batchnorm=batchnorm, lr_mult_distro=lr_mult_distro))
-            f.write(str_to_write)
+        ##with open('%s/pose_deploy.prototxt' % sub_dir, 'w') as f:
+        ##    print 'writing deploy prototxt'
+        ##    str_to_write = str(setLayers_twoBranches('', 0, layername, kernel, stride, outCH, label_name, transform_param_in, deploy=True, batchnorm=batchnorm, lr_mult_distro=lr_mult_distro))
+        ##    f.write(str_to_write)
 
-    solver_string = getSolverPrototxt(base_lr, folder_name)
+    solver_string = getSolverPrototxt(base_lr, sub_dir)
     with open('%s/pose_solver.prototxt' % sub_dir, "w") as f:
         f.write('%s' % solver_string)
 
     bash_string = getBash()
     with open('%s/train_pose.sh' % sub_dir, "w") as f:
         f.write('%s' % bash_string)
-
-    # train files
-    command = 'find %s -name "batch*" | sort > %s/filelist_train.txt' % (dataFolder, sub_dir)
-    print command
-    os.system(command)
-
 
 def getSolverPrototxt(base_lr, folder_name):
     string = 'net: "pose_train_test.prototxt"\n\
@@ -445,22 +439,18 @@ if __name__ == "__main__":
 
     # Two branch: weight = 1, scale 0.5~1.1, fix the mode, base_lr = 4e-5, batch_size = 10
     if(exp == 1):
-        directory = 'COCO_exp_caffe/pose56/exp22/'
-        serverFolder = '/home/zhecao/COCO_kpt/pose56/exp22'
-        base_folder = '/media/posenas4b/User/zhe/arch/'+directory+'model'
-        dataFolder = '/home/zhecao/COCO_kpt/lmdb_trainVal'
-        source = '/home/zhecao/COCO_kpt/lmdb_trainVal'
+        destination = '../model/_trained_harpe'
+        data_folder = '/home/stephen/Datasets/harpe/lmdb'
+
         base_lr = 4e-5   # 2e-5
         batch_size = 10
-        np = 56    # num_parts
+        np = 43    # num_parts
         lr_mult_distro = [1.0, 1.0, 4.0, 1]
         transform_param = dict(stride=8, crop_size_x=368, crop_size_y=368,
                                  target_dist=0.6, scale_prob=1, scale_min=0.5, scale_max=1.1,
                                  max_rotate_degree=40, center_perterb_max=40, do_clahe=False,
-                                 visualize=False, np_in_lmdb=17, num_parts=np)
+                                 visualize=False, np_in_lmdb=16, num_parts=np)
         nCP = 3
-        if not os.path.exists(directory):
-            os.makedirs(directory)
         stage = 6
 
         for nc in range(0,1):
@@ -476,18 +466,9 @@ if __name__ == "__main__":
                 outCH +=     [ 0 ] + [128] * 6 + [np*2] +  [ 0 ]
                 stride +=    [ 0 ] + [ 1 ] * 7          +  [ 0 ]
                    
-            sub_dir = directory
-            d_caffemodel = base_folder
-            if not os.path.exists(sub_dir):
-                os.makedirs(sub_dir)
-            if not os.path.exists(d_caffemodel): # for storing caffe models
-                os.makedirs(d_caffemodel)
+            if not os.path.exists(destination):
+                os.makedirs(destination)
 
             label_name = ['label_vec', 'label_heat', 'vec_weight', 'heat_weight', 'vec_temp', 'heat_temp']
-            writePrototxts(dataFolder, sub_dir, batch_size, layername, kernel, stride, outCH, transform_param, base_lr, d_caffemodel, label_name, 0, lr_mult_distro, 6)
-
-            sub_dir = serverFolder
-            if not os.path.exists(sub_dir):
-                os.makedirs(sub_dir)
-            writePrototxts(dataFolder, sub_dir, batch_size, layername, kernel, stride, outCH, transform_param, base_lr, d_caffemodel, label_name, 0, lr_mult_distro, 6)
+            writePrototxts(data_folder, destination, batch_size, layername, kernel, stride, outCH, transform_param, base_lr, label_name, 0, lr_mult_distro, 6)
 
