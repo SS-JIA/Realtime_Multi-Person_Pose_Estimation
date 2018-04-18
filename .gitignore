@@ -4,6 +4,7 @@
 **/*.pyc
 .ipynb_checkpoints/
 testing/sample_image/hockey1
+model/
 tags
 dataset/
 *.zip
