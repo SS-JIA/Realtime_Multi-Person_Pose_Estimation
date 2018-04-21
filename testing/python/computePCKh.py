@@ -12,25 +12,30 @@ os.environ['GLOG_minloglevel'] = '3'
 import predictor
 
 ## Retrive the ground truth annotations
-ground_truth = h5py.File('../sample_image/hockey1/annot.h5', 'r')
+ground_truth = h5py.File('/home/stephen/Datasets/harpe/annot.h5', 'r')
+
+np = 15
+limb_from = [0, 1, 2, 3, 1, 5, 6, 1, 14, 8, 9,  14, 11, 12]
+limb_to = [1, 2, 3, 4, 5, 6, 7, 14, 8, 9, 10, 11, 12, 13]
+limb_order = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13]
 
 def createGroundTruthModel(img_num):
     ## Extract the keypoint annotations
     parts_gt = ground_truth['part'][img_num-1]
     
-    ## Match format
-    points_gt = np.array(parts_gt[[8,12,11,10,13,14,15,2,1,0,3,4,5]])
-    points_gt = np.insert(points_gt, 0, [[np.nan, np.nan]], axis=0)
-    nan_arr = np.repeat([[np.nan, np.nan]], 4, axis=0)
-    points_gt = np.concatenate([points_gt, nan_arr, [parts_gt[9]]])
+    ## Reorder to expected format
+    points_gt = parts_gt[[9, 8,12,11,10,13,14,15, 2, 1, 0, 3, 4, 5, 7]]
+    points_gt[-1] = (parts_gt[7] + parts_gt[6])/2
 
     ## Create PoseModel
-    pose_model_gt = predictor.PoseModel(points_gt)
+    pose_model_gt = predictor.PoseModel(np, limb_from, limb_to)
+    pose_model_gt.setCoords(points_gt)
+
     return pose_model_gt
 
 def detectPoseModels(img_num):
     ## Get image path
-    img_path = '../sample_image/hockey1/' + str(img_num).zfill(3) + '.jpg'
+    img_path = '/home/stephen/Datasets/harpe/' + str(img_num).zfill(3) + '.jpg'
     ## Run detection
     predictor_instance = predictor.OpenPosePredictor()
     pose_models_detected = predictor_instance.getPoseModels(img_path)
@@ -73,7 +78,7 @@ if __name__ == '__main__':
 
     ## Determine where to start and end
     if len(pckh_record) == 0:
-        start_img = 1
+        start_img = 185
     else:
         start_img = pckh_record.index[-1]+1
 
